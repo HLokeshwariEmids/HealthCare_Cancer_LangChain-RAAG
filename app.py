@@ -60,9 +60,11 @@ st.sidebar.title("⚙️ App Options")
 st.sidebar.markdown("Please upload a public cancer report PDF (e.g., ACS 2025) to get started.")
 
 # Check for Gemini API key
-if not os.getenv("GEMINI_API_KEY"):
-    st.error("❗ Gemini API key not found. Please ensure it is set in your .env file.")
+# Check for Gemini API key
+if not api_key:
+    st.error("❗ Gemini API key not found. Please ensure it is set in your .env file or deployment secrets.")
     st.stop()
+
 
 st.markdown("## 📤Upload a Cancer Report PDF")
 pdf_file = st.file_uploader("Choose your Cancer Facts PDF", type="pdf")
