@@ -9,7 +9,10 @@ import time
 import base64
 
 load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
+# Load API key from secrets or fallback to .env
+api_key = st.secrets["GEMINI_API_KEY"] if "GEMINI_API_KEY" in st.secrets else os.getenv("GEMINI_API_KEY")
+
+
 
 st.set_page_config(page_title="🧠 Cancer Report RAG", layout="wide")
 
@@ -60,9 +63,12 @@ st.sidebar.title("⚙️ App Options")
 st.sidebar.markdown("Please upload a public cancer report PDF (e.g., ACS 2025) to get started.")
 
 # Check for Gemini API key
-# Check for Gemini API key
-if not api_key:
-    st.error("❗ Gemini API key not found. Please ensure it is set in your .env file or deployment secrets.")
+# Inject into env for langchain + Gemini access
+if api_key:
+    os.environ["GEMINI_API_KEY"] = api_key
+else:
+    st.set_page_config(page_title="🧠 Cancer Report RAG", layout="wide")
+    st.error("❗ Gemini API key not found. Please set it in .env (for local) or Secrets (Streamlit Cloud).")
     st.stop()
 
 
