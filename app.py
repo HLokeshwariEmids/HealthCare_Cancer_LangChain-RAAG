@@ -9,6 +9,7 @@ import time
 import base64
 
 load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
 
 st.set_page_config(page_title="🧠 Cancer Report RAG", layout="wide")
 
