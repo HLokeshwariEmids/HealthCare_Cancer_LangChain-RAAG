@@ -19,18 +19,6 @@ This project is a **Role-Aware Retrieval-Augmented Generation (RAG) Chatbot** th
 
 ---
 
-📁 Project Structure
-project/
-├── app.py # Main Streamlit app interface
-├── ingest.py # PDF text extraction and chunking
-├── qa.py # Embedding & RAG logic using Gemini + FAISS
-├── roles.py # Predefined user roles and prompt templates
-├── prompts.py # Function to dynamically create role-based prompts
-├── feedback_log.txt # Stores user feedback and ratings
-├── requirements.txt # Required Python packages
-
----
-
  🧩 Supported Roles
 
 These roles personalize the prompt and tone of the LLM:
