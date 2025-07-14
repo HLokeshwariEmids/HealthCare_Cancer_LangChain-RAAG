@@ -1,0 +1,920 @@
+Below is a detailed line-by-line explanation of each file in your project, organized in a structured document format. Each file's purpose and code are broken down to provide clarity on its functionality and role in the project.
+
+---
+
+# Project Files: Detailed Line-by-Line Explanation
+
+This document provides a comprehensive, line-by-line explanation of the Python files (`qa.py`, `roles.py`, `ingest.py`, `app.py`, `prompts.py`, `requirements.txt`) and the data file (`temp.pdf`) used in your Cancer Report Q&A Assistant project. The project is a Retrieval-Augmented Generation (RAG) system built with Streamlit, LangChain, and Google Gemini to process cancer-related PDF reports and answer user queries based on user-selected roles.
+
+---
+
+## 1. File: `qa.py`
+
+**Purpose**: This file defines the core functionality for building a vector database using FAISS and Gemini embeddings, and setting up a RetrievalQA chain for answering questions based on the processed document.
+
+### Code Explanation
+
+```python
+import os
+```
+- **Purpose**: Imports the `os` module to access environment variables, such as the Gemini API key.
+
+```python
+import google.generativeai as genai
+```
+- **Purpose**: Imports the Google Generative AI SDK to use Gemini models for embedding generation.
+
+```python
+from langchain_community.vectorstores import FAISS
+```
+- **Purpose**: Imports the FAISS vector store from LangChain's community package, used for efficient similarity search over document embeddings.
+
+```python
+from langchain.embeddings.base import Embeddings
+```
+- **Purpose**: Imports the base `Embeddings` class from LangChain, which will be extended to create a custom embeddings class for Gemini.
+
+```python
+from langchain.chains import RetrievalQA
+```
+- **Purpose**: Imports the `RetrievalQA` class from LangChain, used to create a question-answering chain that retrieves relevant documents and generates answers.
+
+```python
+from langchain_google_genai import ChatGoogleGenerativeAI
+```
+- **Purpose**: Imports the `ChatGoogleGenerativeAI` class to integrate Google's Gemini language model with LangChain for question answering.
+
+```python
+class GeminiEmbeddings(Embeddings):
+```
+- **Purpose**: Defines a custom `GeminiEmbeddings` class that inherits from LangChain's `Embeddings` base class to generate embeddings using the Gemini API.
+
+```python
+    def __init__(self, model_name="models/embedding-001", api_key=None):
+```
+- **Purpose**: Constructor for `GeminiEmbeddings`. Takes a model name (default: `models/embedding-001`) and an optional API key.
+
+```python
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+```
+- **Purpose**: Sets the API key, either from the provided argument or from the environment variable `GEMINI_API_KEY`.
+
+```python
+        genai.configure(api_key=self.api_key)
+```
+- **Purpose**: Configures the Google Generative AI SDK with the provided API key.
+
+```python
+        self.model_name = model_name
+```
+- **Purpose**: Stores the model name for embedding generation.
+
+```python
+    def embed_documents(self, texts):
+```
+- **Purpose**: Defines a method to embed a list of document texts, required by the `Embeddings` interface.
+
+```python
+        embeddings = []
+```
+- **Purpose**: Initializes an empty list to store the embeddings of the input texts.
+
+```python
+        for i in range(0, len(texts), 5):
+```
+- **Purpose**: Iterates over the input texts in batches of 5 to manage API limits or performance.
+
+```python
+            batch = texts[i:i+5]
+```
+- **Purpose**: Extracts a batch of up to 5 texts from the input list.
+
+```python
+            for t in batch:
+```
+- **Purpose**: Iterates over each text in the current batch.
+
+```python
+                emb = genai.embed_content(
+                    model=self.model_name,
+                    content=t,
+                    task_type="retrieval_document"
+                )["embedding"]
+```
+- **Purpose**: Calls the Gemini API to generate an embedding for the text, specifying the task type as `retrieval_document` (suitable for document embeddings). Extracts the embedding from the response.
+
+```python
+                embeddings.append(emb)
+```
+- **Purpose**: Appends the generated embedding to the `embeddings` list.
+
+```python
+        return embeddings
+```
+- **Purpose**: Returns the list of embeddings for all input texts.
+
+```python
+    def embed_query(self, text):
+```
+- **Purpose**: Defines a method to embed a single query text, required by the `Embeddings` interface.
+
+```python
+        return genai.embed_content(
+            model=self.model_name,
+            content=text,
+            task_type="retrieval_query"
+        )["embedding"]
+```
+- **Purpose**: Generates an embedding for the query text using the Gemini API with task type `retrieval_query` (optimized for queries). Returns the embedding.
+
+```python
+def build_vector_db(chunks):
+```
+- **Purpose**: Defines a function to create a FAISS vector database from a list of text chunks.
+
+```python
+    embeddings = GeminiEmbeddings()
+```
+- **Purpose**: Instantiates the `GeminiEmbeddings` class to generate embeddings.
+
+```python
+    return FAISS.from_texts(chunks, embeddings)
+```
+- **Purpose**: Creates and returns a FAISS vector store from the input text chunks using the Gemini embeddings.
+
+```python
+def get_qa_chain(vector_db):
+```
+- **Purpose**: Defines a function to create a RetrievalQA chain using the vector database.
+
+```python
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash-latest",
+        google_api_key=os.environ["GEMINI_API_KEY"],
+        temperature=0.3,
+    )
+```
+- **Purpose**: Initializes a `ChatGoogleGenerativeAI` language model with the Gemini `gemini-1.5-flash-latest` model, the API key from the environment, and a temperature of 0.3 (controls randomness of responses).
+
+```python
+    return RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=vector_db.as_retriever(search_kwargs={"k": 3})
+    )
+```
+- **Purpose**: Creates a `RetrievalQA` chain using the specified LLM, with the `stuff` chain type (combines retrieved documents into a single prompt), and a retriever that fetches the top 3 most relevant documents from the vector database.
+
+---
+
+## 2. File: `roles.py`
+
+**Purpose**: Defines a dictionary of user roles and their corresponding prompt templates, which dictate how responses should be tailored based on the selected role.
+
+### Code Explanation
+
+```python
+USER_ROLES = {
+```
+- **Purpose**: Defines a dictionary named `USER_ROLES` to store role names and their associated prompt templates.
+
+```python
+    "Medical Specialist (Doctor)": "You are a medical professional. Answer with clinical depth, medical terminology, and evidence-based recommendations.",
+```
+- **Purpose**: Defines the prompt for the "Medical Specialist (Doctor)" role, instructing the model to respond with detailed, technical, and evidence-based medical information.
+
+```python
+    "Health-Conscious Patient": "You are a curious and health-conscious patient. Explain answers in simple, friendly terms.",
+```
+- **Purpose**: Defines the prompt for the "Health-Conscious Patient" role, instructing the model to provide simple and friendly explanations suitable for a non-expert audience.
+
+```python
+    "Public Health Analyst": "You are a data-driven public health analyst. Focus on trends, population data, and public health implications.",
+```
+- **Purpose**: Defines the prompt for the "Public Health Analyst" role, instructing the model to emphasize data, trends, and public health implications.
+
+```python
+    "Medical Research Intern": "You are an intern learning from this document. Be curious, analytical, and reference the document in academic tone."
+```
+- **Purpose**: Defines the prompt for the "Medical Research Intern" role, instructing the model to adopt a curious, analytical, and academic tone, referencing the document explicitly.
+
+```python
+}
+```
+- **Purpose**: Closes the `USER_ROLES` dictionary definition.
+
+---
+
+## 3. File: `ingest.py`
+
+**Purpose**: Handles the extraction of text from a PDF file and splits it into chunks suitable for processing by the vector database.
+
+### Code Explanation
+
+```python
+import pdfplumber
+```
+- **Purpose**: Imports the `pdfplumber` library for extracting text from PDF files.
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+```
+- **Purpose**: Imports the `RecursiveCharacterTextSplitter` from LangChain to split text into manageable chunks.
+
+```python
+def extract_chunks(path, max_chunks=50):
+```
+- **Purpose**: Defines a function to extract text from a PDF file and split it into chunks, with a maximum limit of 50 chunks.
+
+```python
+    with pdfplumber.open(path) as pdf:
+```
+- **Purpose**: Opens the PDF file at the specified `path` using `pdfplumber` in a context manager to ensure proper file handling.
+
+```python
+        raw_text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+```
+- **Purpose**: Extracts text from each page of the PDF, joining all pages with newline characters. Uses `or ""` to handle cases where `extract_text()` returns `None`.
+
+```python
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+```
+- **Purpose**: Creates a `RecursiveCharacterTextSplitter` instance with a chunk size of 1000 characters and an overlap of 200 characters to ensure context continuity between chunks.
+
+```python
+    chunks = splitter.split_text(raw_text)
+```
+- **Purpose**: Splits the extracted text into chunks based on the splitter's configuration.
+
+```python
+    return chunks[:max_chunks]
+```
+- **Purpose**: Returns up to `max_chunks` (50) text chunks to limit processing load.
+
+---
+
+## 4. File: `app.py`
+
+**Purpose**: Implements the Streamlit web application for the Cancer Report Q&A Assistant, handling PDF uploads, role selection, question answering, and feedback collection.
+
+### Code Explanation
+
+```python
+import os
+```
+- **Purpose**: Imports the `os` module to access environment variables.
+
+```python
+import streamlit as st
+```
+- **Purpose**: Imports the Streamlit library for building the web application.
+
+```python
+from dotenv import load_dotenv
+```
+- **Purpose**: Imports the `load_dotenv` function to load environment variables from a `.env` file.
+
+```python
+from ingest import extract_chunks
+from qa import build_vector_db, get_qa_chain
+from prompts import get_prompt
+from roles import USER_ROLES
+```
+- **Purpose**: Imports necessary functions and data from other project files.
+
+```python
+import time
+import base64
+```
+- **Purpose**: Imports `time` for measuring response time and `base64` for encoding text chunks for download.
+
+```python
+load_dotenv()
+```
+- **Purpose**: Loads environment variables from the `.env` file.
+
+```python
+api_key = os.getenv("GEMINI_API_KEY")
+```
+- **Purpose**: Retrieves the Gemini API key from the environment variables.
+
+```python
+st.set_page_config(page_title="🧠 Cancer Report RAG", layout="wide")
+```
+- **Purpose**: Configures the Streamlit app with a title and a wide layout for better display.
+
+```python
+# Inject custom CSS
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #F2F6FC;
+    }
+    .title {
+        font-size: 40px;
+        color: #0a1f44;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+    .answer-box {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
+        margin-top: 20px;
+    }
+    .sidebar-title {
+        font-size: 18px;
+        font-weight: 600;
+    }
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #ddeeff;
+        color: #333;
+        text-align: center;
+        padding: 10px;
+    }
+    .download-link {
+        text-decoration: none;
+        font-weight: bold;
+        color: #004080;
+    }
+    </style>
+""", unsafe_allow_html=True)
+```
+- **Purpose**: Injects custom CSS to style the Streamlit app, including background colors, fonts, and layouts for the main app, title, answer boxes, sidebar, footer, and download links.
+
+```python
+st.markdown("<div class='title'>🧠 Cancer Report Q&A Assistant (Gemini + RAG)</div>", unsafe_allow_html=True)
+```
+- **Purpose**: Displays the app title with the custom CSS class `title`.
+
+```python
+st.sidebar.title("⚙️ App Options")
+st.sidebar.markdown("Please upload a public cancer report PDF (e.g., ACS 2025) to get started.")
+```
+- **Purpose**: Adds a sidebar with a title and instructions for uploading a PDF.
+
+```python
+# Check for Gemini API key
+if not os.getenv("GEMINI_API_KEY"):
+    st.error("❗ Gemini API key not found. Please ensure it is set in your .env file.")
+    st.stop()
+```
+- **Purpose**: Checks if the Gemini API key is set; if not, displays an error and stops the app.
+
+```python
+st.markdown("## 📤Upload a Cancer Report PDF")
+pdf_file = st.file_uploader("Choose your Cancer Facts PDF", type="pdf")
+```
+- **Purpose**: Adds a section for uploading a PDF file, restricting uploads to PDF format.
+
+```python
+if pdf_file:
+    if "chunks" not in st.session_state:
+        with open("temp.pdf", "wb") as f:
+            f.write(pdf_file.getbuffer())
+```
+- **Purpose**: If a PDF is uploaded and chunks are not already in the session state, saves the uploaded PDF to a temporary file (`temp.pdf`).
+
+```python
+        with st.spinner("📚 Processing PDF into chunks and creating embeddings..."):
+            chunks = extract_chunks("temp.pdf", max_chunks=50)
+            vector_db = build_vector_db(chunks)
+            qa_chain = get_qa_chain(vector_db)
+```
+- **Purpose**: Displays a spinner while processing the PDF: extracts text chunks, builds a FAISS vector database, and creates a RetrievalQA chain.
+
+```python
+            st.session_state.chunks = chunks
+            st.session_state.vector_db = vector_db
+            st.session_state.qa_chain = qa_chain
+```
+- **Purpose**: Stores the chunks, vector database, and QA chain in Streamlit's session state for persistence across interactions.
+
+```python
+        st.success("✅ Document processed! Now you can ask questions below.")
+        st.balloons()
+```
+- **Purpose**: Displays a success message and balloons animation after processing the PDF.
+
+```python
+if "qa_chain" in st.session_state:
+    st.markdown("## 🧪Select or Add Role, Then Ask a Question")
+```
+- **Purpose**: If a QA chain exists, displays a section for selecting a role and asking a question.
+
+```python
+    role_options = list(USER_ROLES.keys()) + ["Add a new role"]
+    selected = st.selectbox("👤 Choose a role or create one", role_options)
+```
+- **Purpose**: Creates a dropdown menu with existing roles plus an option to add a new role.
+
+```python
+    if selected == "Add a new role":
+        new_role = st.text_input("Enter new role name")
+        new_prompt = st.text_area("Enter prompt template for the role")
+        if st.button("➕ Save Role"):
+            if new_role and new_prompt:
+                USER_ROLES[new_role] = new_prompt
+                st.success(f"✅ Role '{new_role}' added! Now you can select it and ask a question.")
+```
+- **Purpose**: If "Add a new role" is selected, provides inputs for a new role name and prompt. Saves the new role to `USER_ROLES` if both fields are filled and the "Save Role" button is clicked.
+
+```python
+    else:
+        question = st.text_input("❓ What would you like to know based on this report?")
+```
+- **Purpose**: If an existing role is selected, provides a text input for the user to enter a question.
+
+```python
+        if st.button("Ask Question"):
+            if not question.strip():
+                st.warning("Please enter a valid question.")
+            else:
+                final_prompt = get_prompt(selected, question)
+                with st.spinner("🤖 Generating intelligent response..."):
+                    start_time = time.time()
+                    answer = st.session_state.qa_chain.run(final_prompt)
+                    duration = round(time.time() - start_time, 2)
+```
+- **Purpose**: If the "Ask Question" button is clicked, checks if the question is non-empty. If valid, constructs the final prompt using the selected role and question, runs the QA chain to get an answer, and measures the response time.
+
+```python
+                st.markdown(f"<div class='answer-box'><b>{selected} says:</b><br><br>{answer}</div>", unsafe_allow_html=True)
+                st.success(f"✅ Answered in {duration} seconds")
+```
+- **Purpose**: Displays the answer in a styled box and shows the response time.
+
+```python
+                with st.expander("📂 View Top Retrieved Chunks"):
+                    docs = st.session_state.qa_chain.retriever.get_relevant_documents(question)
+                    for i, doc in enumerate(docs):
+                        st.markdown(f"<div class='answer-box'><b>Chunk {i+1}:</b><br>{doc.page_content[:300]}...</div>", unsafe_allow_html=True)
+```
+- **Purpose**: Adds an expandable section to display the top 3 retrieved document chunks, showing the first 300 characters of each.
+
+```python
+                with st.expander("📣 Submit Feedback"):
+                    feedback = st.text_area("📝 Your feedback on the answer")
+                    rating = st.slider("⭐ Helpfulness Rating", 1, 5, 3)
+                    if st.button("Submit Feedback"):
+                        with open("feedback_log.txt", "a") as fb:
+                            fb.write(f"\nRole: {selected}\nQuestion: {question}\nRating: {rating}\nFeedback: {feedback}\n---\n")
+                        st.success("✅ Feedback submitted. Thank you!")
+```
+- **Purpose**: Adds an expandable section for submitting feedback, including a text area for comments and a slider for a 1-5 rating. Saves feedback to `feedback_log.txt` when submitted.
+
+```python
+if "chunks" in st.session_state:
+    st.markdown("## 📥Download Extracted Chunks(If Needed)")
+    if st.button("Download Chunks"):
+        joined_chunks = "\n\n".join(st.session_state.chunks)
+        b64 = base64.b64encode(joined_chunks.encode()).decode()
+        href = f'<a href="data:file/txt;base64,{b64}" download="chunks.txt">📄 Click here to download chunks</a>'
+        st.markdown(href, unsafe_allow_html=True)
+```
+- **Purpose**: If chunks exist, provides an option to download them as a text file. Joins chunks with double newlines, encodes them in base64, and creates a download link.
+
+```python
+st.markdown("""
+<div class='footer'>
+    💡 Built using Gemini 2.5, LangChain & Streamlit | CopyRights @Lokeshwari Reserved 2025
+</div>
+""", unsafe_allow_html=True)
+```
+- **Purpose**: Displays a styled footer with project credits and copyright information.
+
+---
+
+## 5. File: `prompts.py`
+
+**Purpose**: Defines a function to construct a prompt by combining a role-specific prompt with the user's question.
+
+### Code Explanation
+
+```python
+from roles import USER_ROLES
+```
+- **Purpose**: Imports the `USER_ROLES` dictionary from `roles.py`.
+
+```python
+def get_prompt(role, question):
+```
+- **Purpose**: Defines a function to create a final prompt for the QA chain.
+
+```python
+    base_prompt = USER_ROLES.get(role, "")
+```
+- **Purpose**: Retrieves the prompt template for the specified role from `USER_ROLES`, defaulting to an empty string if the role is not found.
+
+```python
+    return f"{base_prompt}\n\nQuestion: {question}"
+```
+- **Purpose**: Combines the role-specific prompt with the user's question, separated by double newlines, and returns the final prompt.
+
+---
+
+## 6. File: `requirements.txt`
+
+**Purpose**: Lists the Python package dependencies required to run the project.
+
+### Content Explanation
+
+```plaintext
+streamlit
+```
+- **Purpose**: Specifies the Streamlit library for building the web application.
+
+```plaintext
+pdfplumber
+```
+- **Purpose**: Specifies the `pdfplumber` library for extracting text from PDF files.
+
+```plaintext
+langchain
+```
+- **Purpose**: Specifies the core LangChain library for building the RAG system.
+
+```plaintext
+langchain_community
+```
+- **Purpose**: Specifies the LangChain community package, which includes the FAISS vector store.
+
+```plaintext
+langchain_google_genai
+```
+- **Purpose**: Specifies the LangChain integration for Google Generative AI models.
+
+```plaintext
+python-dotenv
+```
+- **Purpose**: Specifies the `python-dotenv` library for loading environment variables from a `.env` file.
+
+```plaintext
+google-generativeai
+```
+- **Purpose**: Specifies the Google Generative AI SDK for interacting with Gemini models.
+
+```plaintext
+faiss-cpu
+```
+- **Purpose**: Specifies the FAISS library (CPU version) for efficient similarity search in the vector database.
+
+---
+
+## 7. File: `temp.pdf`
+
+**Purpose**: This is not a code file but a sample PDF file containing the "Cancer Facts & Figures 2025" report by the American Cancer Society. It serves as the data source for the RAG system, providing cancer-related statistics and information.
+
+### Content Explanation
+
+- **Structure**: The PDF is structured into pages, each containing sections such as:
+  - **Basic Cancer Facts**: Definitions, prevention, risk factors, and survival rates.
+  - **Selected Cancers**: Detailed information on specific cancers (e.g., breast, lung, prostate).
+  - **Tables and Figures**: Data on new cases, deaths, incidence rates, and survival rates by cancer type, sex, and state.
+  - **Cancer Disparities**: Information on disparities across racial and ethnic groups.
+  - **Cancer Risk Factors**: Details on modifiable risk factors like tobacco, obesity, and alcohol.
+  - **Global Cancer Burden**: Global statistics and prevention strategies.
+  - **American Cancer Society Role**: Activities like HPV vaccination and patient support programs.
+  - **References and Sources**: Citations and data sources for the statistics.
+  - **Recommendations**: Guidelines for early cancer detection.
+
+- **Usage in Project**: The `ingest.py` script extracts text from this PDF, splits it into chunks, and the `qa.py` script processes these chunks into a vector database for question answering.
+
+---
+
+## Project Overview
+
+The project is a Streamlit-based web application that allows users to upload a cancer report PDF (e.g., `temp.pdf`), select a role (e.g., Medical Specialist, Health-Conscious Patient), and ask questions about the report. The system uses a RAG pipeline with Google Gemini for embeddings and language modeling, FAISS for vector storage, and LangChain for retrieval and question answering. Users can also add custom roles, view retrieved document chunks, submit feedback, and download extracted text chunks.
+
+### Key Features
+- **PDF Processing**: Extracts and chunks text from a PDF using `pdfplumber` and LangChain.
+- **Vector Database**: Uses FAISS and Gemini embeddings for efficient document retrieval.
+- **Role-Based Responses**: Tailors answers based on user-selected roles with predefined or custom prompts.
+- **Interactive UI**: Built with Streamlit, including file uploads, role selection, question input, feedback, and chunk downloads.
+- **Feedback System**: Logs user feedback and ratings to a text file.
+- **Styling**: Custom CSS for a polished user interface.
+
+This detailed explanation covers the functionality and implementation of each file, providing a clear understanding of how they work together to create the Cancer Report Q&A Assistant.
+
+
+
+
+EVALUATION METRICS FOR LLMS:(GEVAL)-----------------::::::::::::::::
+
+The article "G-Eval: The Definitive Guide to Evaluating LLMs with LLMs" from Confident AI provides a comprehensive overview of G-Eval, a framework for evaluating large language model (LLM) outputs using another LLM as a judge, leveraging a chain-of-thought (CoT) approach to assess custom criteria. Below is a detailed summary of the key sections of the article, based on the provided web results.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)[](https://deepeval.com/docs/metrics-llm-evals)
+
+---
+
+### **1. What is G-Eval?**
+G-Eval is a versatile evaluation framework designed to assess LLM outputs based on custom, user-defined criteria. It employs an LLM-as-a-judge approach, using chain-of-thought (CoT) prompting to break down complex evaluation tasks into structured steps. This allows for human-like accuracy in evaluating a wide range of use cases, from chatbots to retrieval-augmented generation (RAG) systems. G-Eval is particularly valued for its flexibility, enabling tailored evaluations for specific tasks, unlike generic metrics that may not capture nuanced requirements.
+
+- **Key Features**:
+  - **Custom Criteria**: G-Eval allows users to define evaluation criteria in natural language, which the framework translates into structured evaluation steps.
+  - **Chain-of-Thought (CoT)**: The framework generates a series of logical steps to evaluate outputs, ensuring a systematic and transparent process.
+  - **Versatility**: Suitable for evaluating diverse LLM applications, including conversational agents, RAG pipelines, and AI agents.
+  - **Integration with DeepEval**: G-Eval is implemented within DeepEval, an open-source LLM evaluation framework, making it easy to use with minimal code (e.g., five lines for implementation).[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+- **Why It’s Popular**: G-Eval addresses the limitations of human evaluation (slow, costly, labor-intensive) and traditional metrics like BERT or ROUGE, which fail to capture the semantic depth of LLM-generated text. Research shows G-Eval aligns closely with human judgments, often surpassing human consistency.[](https://www.confident-ai.com/blog/why-llm-as-a-judge-is-the-best-llm-evaluation-method)
+
+---
+
+### **2. How G-Eval Works**
+G-Eval operates through a three-step process to evaluate LLM outputs:
+
+1. **Evaluation Step Generation**:
+   - An LLM transforms a user-defined natural language criterion (e.g., "Evaluate the correctness of the response") into a structured list of evaluation steps. For instance, for a medical chatbot, steps might include verifying medical claims against clinical guidelines and penalizing hallucinations.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+   - This ensures the evaluation is systematic and aligned with the specified criteria.
+
+2. **Form-Filling Paradigm**:
+   - The generated steps are used to create a prompt that includes relevant parameters, such as the user’s query, the LLM’s output, and any contextual data (e.g., retrieval context for RAG systems). The LLM judge then evaluates the output based on these steps, producing a score.
+   - Scores are typically normalized between 0 and 1, with a default threshold of 0.5 to determine success.[](https://documentation.confident-ai.com/concepts/metrics)
+
+3. **Scoring and Reasoning**:
+   - The LLM judge assigns a score (e.g., 1–5 or 0–1) based on the evaluation steps. Optionally, it provides reasoning for transparency, which is useful for debugging or refining metrics.
+   - For example, in a medical chatbot scenario, a casual response like “Don’t overthink it” to a serious query might score low due to inappropriate tone, undermining trust.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+---
+
+### **3. Implementing G-Eval**
+The article provides practical guidance on implementing G-Eval, emphasizing its ease of use within the DeepEval framework. A sample implementation for a custom metric, such as "Medical Diagnosis Faithfulness," is detailed:
+
+- **Code Example**:
+  ```python
+  from deepeval.metrics import GEval
+  from deepeval.test_case import LLMTestCaseParams
+  custom_faithfulness_metric = GEval(
+      name="Medical Diagnosis Faithfulness",
+      evaluation_steps=[
+          "Extract medical claims or diagnoses from the actual output.",
+          "Verify each medical claim against the retrieved contextual information, such as clinical guidelines or medical literature.",
+          "Identify any contradictions or unsupported medical claims that could lead to misdiagnosis.",
+          "Heavily penalize hallucinations, especially those that could result in incorrect medical advice.",
+          "Provide reasons for the faithfulness score, emphasizing the importance of clinical accuracy and patient safety."
+      ],
+      evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.RETRIEVAL_CONTEXT]
+  )
+  custom_faithfulness_metric.measure(llm_test_case)
+  ```
+  This code creates a G-Eval metric to evaluate the faithfulness of a medical chatbot’s response, ensuring it aligns with clinical guidelines and avoids harmful inaccuracies.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+- **Choosing Criteria**:
+  - The article stresses the importance of crafting precise evaluation criteria by reviewing existing input-response pairs. For example, analyzing past interactions can reveal weaknesses, such as inappropriate tone or factual inaccuracies, which can inform the design of evaluation steps.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+  - Criteria should be specific to the use case (e.g., medical, legal, or customer support) to ensure relevance.
+
+- **When to Specify Evaluation Steps**:
+  - Explicit steps are crucial for subjective or complex criteria, such as tone or domain-specific accuracy, to guide the LLM judge effectively.
+  - For simpler metrics, like answer relevancy, fewer steps may suffice, but detailed steps enhance consistency.
+
+---
+
+### **4. Improving G-Eval Beyond the Original Paper**
+The article highlights ways to enhance G-Eval’s performance beyond the original research ("NLG Evaluation using GPT-4 with Better Human Alignment"):
+
+- **Use High-Quality LLMs**: The original paper used GPT-3.5 and GPT-4 for experiments. The article recommends sticking with these models or similar high-performing LLMs to ensure reliable scoring, as weaker models may produce inconsistent results.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+- **Normalize Scores**: To account for the probabilistic nature of LLM outputs, the article suggests using token probabilities to normalize scores (e.g., weighted summation of output token probabilities) for more stable results.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+- **Incorporate Reference Data**: Reference-based G-Eval (using expected outputs) yields more consistent scores than referenceless methods, especially for critical applications like medical diagnosis.[](https://www.confident-ai.com/blog/evaluating-llm-systems-metrics-benchmarks-and-best-practices)[](https://www.confident-ai.com/blog/why-llm-as-a-judge-is-the-best-llm-evaluation-method)
+- **Optimize Evaluation Steps**: Refine steps to minimize ambiguity and ensure they align with the specific use case, improving the LLM judge’s accuracy.
+
+---
+
+### **5. Common G-Eval Metrics**
+G-Eval supports a variety of metrics tailored to different use cases. The article lists the most commonly used ones:
+
+- **Answer Correctness**: Compares the LLM’s output to an expected output to assess factual accuracy. This is the most widely used G-Eval metric and is reference-based.[](https://deepeval.com/docs/metrics-llm-evals)
+- **Coherence**: Evaluates the logical flow and collective quality of sentences in the output.[](https://www.confident-ai.com/blog/how-to-evaluate-llm-applications)
+- **Fluency**: Assesses the grammatical correctness and naturalness of the language.
+- **Summarization Quality**: Specific to summarization tasks, this metric checks if the summary captures key information without contradictions or hallucinations.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+- **Conversational Quality**: Evaluates multi-turn conversations for relevance, knowledge retention, and role adherence.[](https://documentation.confident-ai.com/concepts/metrics)
+- **Domain-Specific Metrics**: For example, in healthcare, metrics like "Medical Diagnosis Faithfulness" ensure outputs align with clinical standards and avoid harmful errors.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+These metrics can be combined with system-specific metrics (e.g., RAG metrics like contextual recall or agent metrics like tool correctness) to create a comprehensive evaluation suite.[](https://documentation.confident-ai.com/concepts/metrics)
+
+---
+
+### **6. Use Cases and Practical Applications**
+The article emphasizes G-Eval’s applicability across diverse LLM systems, including:
+
+- **RAG Pipelines**: Evaluating the faithfulness and relevance of outputs based on retrieved contexts.[](https://www.confident-ai.com/blog/how-to-evaluate-rag-applications-in-ci-cd-pipelines-with-deepeval)
+- **Chatbots**: Assessing tone, correctness, and conversational quality, especially in high-stakes domains like healthcare or legal advice.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+- **AI Agents**: Measuring task completion and tool correctness in agentic workflows.[](https://documentation.confident-ai.com/concepts/metrics)
+- **Synthetic Data Generation**: Using G-Eval to validate the quality of synthetic datasets generated by LLMs.[](https://www.confident-ai.com/blog/the-definitive-guide-to-synthetic-data-generation-using-llms)
+
+The article provides a real-world example of a medical chatbot, where a casual response to a serious query (“My nose has been running constantly. Could it be something serious?”) was flagged for inappropriate tone, demonstrating G-Eval’s ability to catch subtle issues.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+---
+
+### **7. Integration with DeepEval and Confident AI**
+G-Eval is seamlessly integrated into DeepEval, an open-source LLM evaluation framework with over 4.8k GitHub stars and 500k monthly downloads. DeepEval simplifies G-Eval implementation, requiring minimal code, and is supported by Confident AI, a cloud platform for benchmarking, monitoring, and red-teaming LLM applications.[](https://www.ycombinator.com/companies/confident-ai)[](https://docs.confident-ai.com/confident-ai/confident-ai-introduction)[](https://deepeval.com/docs/getting-started)
+
+- **Benefits of DeepEval**:
+  - Supports over 40 research-backed metrics, including G-Eval and deterministic metrics like RAGAS.[](https://deepeval.com)
+  - Enables unit testing of LLM outputs, similar to Pytest, with integration into CI/CD pipelines.[](https://github.com/confident-ai/deepeval)
+  - Allows synthetic dataset generation and red-teaming for safety vulnerabilities.[](https://github.com/confident-ai/deepeval)[](https://www.confident-ai.com/blog/the-definitive-guide-to-synthetic-data-generation-using-llms)
+- **Confident AI Features**:
+  - Centralized platform for managing evaluation datasets, generating testing reports, and automating regression testing.[](https://docs.confident-ai.com/confident-ai/confident-ai-introduction)
+  - Supports A/B testing, LLM observability, and human-in-the-loop feedback.[](https://documentation.confident-ai.com/docs)
+  - Free to try, with enterprise options available.[](https://www.confident-ai.com/pricing)
+
+---
+
+### **8. Tips for Effective G-Eval Use**
+The article provides practical tips for optimizing G-Eval:
+
+- **Craft Clear Criteria**: Review input-response pairs to identify key traits (e.g., tone, accuracy) and define precise evaluation steps.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+- **Use Reference-Based Metrics**: Expected outputs improve score consistency, especially for critical applications.[](https://www.confident-ai.com/blog/evaluating-llm-systems-metrics-benchmarks-and-best-practices)
+- **Combine with Other Metrics**: Pair G-Eval with system-specific metrics (e.g., RAG or agent metrics) for a holistic evaluation.[](https://documentation.confident-ai.com/concepts/metrics)
+- **Leverage Confident AI**: Store datasets and results on the cloud for collaboration, regression testing, and observability.[](https://deepeval.com/docs/getting-started)
+- **Iterate and Refine**: Use G-Eval’s reasoning output to debug and improve LLM performance iteratively.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+---
+
+### **9. Limitations and Considerations**
+While G-Eval is powerful, the article acknowledges its limitations:
+- **Dependence on LLM Quality**: The accuracy of G-Eval depends on the quality of the LLM judge. Weaker models may produce inconsistent scores.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+- **Subjectivity in Criteria**: Poorly defined criteria can lead to ambiguous or unreliable evaluations.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+- **Computational Cost**: Running G-Eval, especially with large datasets, can be resource-intensive, though DeepEval’s optimizations (e.g., caching) mitigate this.[](https://deepeval.com/docs/metrics-llm-evals)
+
+To address these, the article recommends using high-quality LLMs like GPT-4, carefully designing criteria, and leveraging Confident AI’s infrastructure for efficiency.[](https://www.confident-ai.com/blog/why-llm-as-a-judge-is-the-best-llm-evaluation-method)
+
+---
+
+### **10. Conclusion**
+G-Eval is a groundbreaking framework for evaluating LLM outputs with human-like accuracy, offering flexibility for custom, use-case-specific metrics. Its integration with DeepEval and Confident AI makes it accessible and scalable, enabling developers to benchmark, safeguard, and improve LLM applications efficiently. By combining G-Eval with other metrics and following best practices (e.g., clear criteria, reference-based scoring), teams can achieve robust evaluation workflows that enhance LLM performance and reliability.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)[](https://www.ycombinator.com/companies/confident-ai)[](https://deepeval.com/docs/metrics-llm-evals)
+
+For further details, the article directs readers to DeepEval’s documentation and additional blog posts on use cases and implementation examples.[](https://www.confident-ai.com/blog/g-eval-the-definitive-guide)
+
+---
+
+This summary captures the core concepts, implementation details, and practical insights from the article, providing a thorough understanding of G-Eval’s role in LLM evaluation. If you need specific code examples or deeper analysis of any section, let me know!
+
+
+
+
+
+
+
+The Microsoft Learn page titled "Evaluation metrics" provides an overview of metrics used to evaluate the performance of Large Language Models (LLMs) and their applications. Below is a detailed summary of the key sections and evaluation metrics discussed, based on the content from the provided URL and relevant web results.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=es&_x_tr_hl=es&_x_tr_pto=tc)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc)
+
+---
+
+### **1. Importance of LLM Evaluation Metrics**
+Evaluating LLMs is critical to assess their effectiveness and reliability, particularly given the complexity and evolving nature of LLM applications. Unlike traditional machine learning models, LLMs lack a unified evaluation approach due to their diverse applications (e.g., text generation, summarization, question-answering). Selecting appropriate metrics tailored to the specific problem is essential for meaningful evaluation.
+
+- **Challenges**:
+  - LLM evaluation is not straightforward due to the subjective nature of outputs in tasks like summarization or conversation.
+  - Traditional metrics developed for NLP tasks may not fully capture the semantic nuances of LLM-generated text.
+  - Metrics must align with business goals or key performance indicators (KPIs) to ensure practical relevance.
+
+- **Purpose**:
+  - Metrics provide quantitative measures to compare generated outputs against ground truth or expected results.
+  - They help identify strengths, weaknesses, and areas for improvement in LLM performance.
+
+---
+
+### **2. Categories of Evaluation Metrics**
+The page categorizes evaluation metrics based on their purpose and historical development, as illustrated in Figure 1 (a timeline of AI evaluation metrics). Metrics are broadly divided into reference-based, referenceless, and task-specific categories, each suited to different LLM applications.
+
+#### **A. Reference-Based Metrics**
+These metrics compare LLM-generated text to human-annotated ground truth, often using n-gram overlap or semantic similarity. They were originally developed for traditional NLP tasks but remain relevant for LLMs.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=es&_x_tr_hl=es&_x_tr_pto=tc)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc)
+
+1. **BLEU (Bilingual Evaluation Understudy)**:
+   - **Description**: Measures the similarity between machine-generated text and reference text by comparing n-gram overlaps. Originally designed for machine translation, it evaluates precision of matching words or phrases.
+   - **Use Cases**: Machine translation, text generation, paraphrase generation, and text summarization.
+   - **Limitations**: Focuses on surface-level overlap, missing semantic meaning. May penalize valid but differently phrased outputs.
+   - **Example**: For a translation task, BLEU compares the translated text to a human-provided reference translation, scoring higher for exact matches.
+
+2. **ROUGE (Recall-Oriented Understudy for Gisting Evaluation)**:
+   - **Description**: Measures overlap of n-grams, word sequences, or longest common subsequences between generated and reference text, emphasizing recall (coverage of reference content).
+   - **Use Cases**: Text summarization, text generation.
+   - **Variants**: ROUGE-N (n-gram overlap), ROUGE-L (longest common subsequence), ROUGE-S (skip-bigram).
+   - **Limitations**: Like BLEU, it prioritizes lexical overlap over semantic accuracy, potentially missing contextual nuances.
+   - **Example**: In summarization, ROUGE evaluates how many key phrases from the reference summary appear in the generated summary.
+
+3. **JS Divergence (JS2)**:
+   - **Description**: A statistical metric that measures the divergence between probability distributions of generated and reference text, often based on n-grams.
+   - **Use Cases**: Text generation tasks where distributional similarity is important.
+   - **Limitations**: Less intuitive for non-technical users and may not capture semantic quality.
+   - **Example**: Used to assess whether the word distribution in generated text aligns with the reference.
+
+#### **B. Task-Specific Metrics**
+These metrics are tailored to specific LLM applications, such as code generation or retrieval-augmented generation (RAG).
+
+1. **Functional Correctness**:
+   - **Description**: Evaluates whether LLM-generated code produces the correct output for a given input in natural language-to-code tasks. Test cases with predefined inputs and expected outputs are used to verify correctness.
+   - **Use Case**: Code generation (e.g., generating a function to compute factorials).
+   - **Example**: For a factorial function, test cases might include:
+     - Input: 0, Expected Output: 1
+     - Input: 1, Expected Output: 1
+     - Input: 5, Expected Output: 120
+     - Input: 10, Expected Output: 3628800
+     - The generated code is executed, and outputs are compared to expected results. If all test cases pass, the code is deemed functionally correct.
+   - **Strengths**: Directly measures task performance.
+   - **Limitations**: Requires well-defined test cases, which may not cover all edge cases.
+
+2. **Keyword Presence**:
+   - **Description**: Checks whether specific keywords or key phrases from the input appear in the generated text, using rule-based checks or LLM-generated test cases.
+   - **Use Cases**: Tasks requiring specific terminology, such as technical writing or customer service responses.
+   - **Implementation**: Rules verify the presence of relevant keywords. Alternatively, LLMs can generate diverse test cases to evaluate keyword inclusion across contexts.
+   - **Example**: In a customer service chatbot, the metric ensures responses include terms like “refund” or “support” when relevant to the query.
+   - **Strengths**: Simple and effective for domain-specific tasks.
+   - **Limitations**: May overlook semantic quality if keywords are present but used incorrectly.
+
+#### **C. RAG-Specific Metrics (RAGAS Framework)**:
+The RAGAS framework evaluates retrieval-augmented generation (RAG) pipelines, which combine retrieval and generation models. These metrics require retrieved context per query.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=es&_x_tr_hl=es&_x_tr_pto=tc)[](https://learn-microsoft-com.translate.goog/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc)
+
+1. **Faithfulness**:
+   - **Description**: Measures the factual consistency of the generated answer against the retrieved context. Claims in the output are extracted and verified against the context; unsupported claims are penalized.
+   - **Process**: 
+     - Step 1: Extract statements from the generated answer.
+     - Step 2: Verify each statement against the retrieved context.
+   - **Use Case**: RAG applications, such as question-answering systems relying on external knowledge bases.
+   - **Example**: For a query about a historical event, the metric checks if the LLM’s claims (e.g., dates, names) align with the retrieved documents.
+   - **Strengths**: Ensures factual accuracy in context-dependent tasks.
+   - **Limitations**: Relies on the quality of retrieved context and may miss subtle inaccuracies.
+
+#### **D. LLM-as-a-Judge Metrics (e.g., G-Eval)**:
+These metrics use a strong LLM (e.g., GPT-4) to evaluate another LLM’s outputs, often for subjective tasks like summarization where ground truth is unavailable.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/g-eval-metric-for-summarization)[](https://learn.microsoft.com/cs-cz/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/g-eval-metric-for-summarization)
+
+1. **G-Eval**:
+   - **Description**: Uses GPT-4 to assess text quality across four dimensions: fluency, coherence, consistency, and relevance. It employs chain-of-thought (CoT) prompting to generate evaluation steps and produces numeric scores via probability-weighted summation.
+   - **Dimensions**:
+     - **Fluency**: Grammatical correctness and naturalness of the text.
+     - **Coherence**: Logical flow and organization of sentences.
+     - **Consistency**: Factual alignment with the source document (if applicable).
+     - **Relevance**: Appropriateness of the response to the input query.
+   - **Use Case**: Abstractive summarization, where traditional metrics like ROUGE fail due to subjective outputs.
+   - **Implementation**: 
+     - Generates evaluation steps using CoT (e.g., “Check if the summary captures the main topic”).
+     - Samples outputs multiple times (e.g., n=20, temperature=2, top_p=1) to estimate scores, as GPT-4 does not output token probabilities.
+   - **Example**: For a news article summary, G-Eval assesses whether the summary is fluent, logically structured, factually consistent with the source, and relevant to the main topic.
+   - **Strengths**: Aligns closely with human judgment (verified via SummEval benchmark) and handles subjective tasks effectively.
+   - **Limitations**: Relies on the quality of the LLM judge and can be computationally expensive.
+
+2. **Self-Evaluation**:
+   - **Description**: The LLM evaluates its own outputs by scoring their quality based on predefined criteria, such as relevance or fluency. This method is gaining popularity due to models like GPT-4’s ability to assess output quality accurately.
+   - **Process**:
+     - Generate predictions from a test set.
+     - Prompt the LLM to evaluate the output against reference text or criteria.
+   - **Use Case**: Quick, automated evaluation when human annotation is costly or unavailable.
+   - **Strengths**: Scalable and cost-effective compared to human evaluation.
+   - **Limitations**: Potential bias if the model overestimates its own performance.
+
+#### **E. Other Metrics Mentioned in Related Sources**:
+Additional metrics from related sources provide context for LLM evaluation, particularly for specific tasks or frameworks.[](https://playbook.microsoft.com/code-with-mlops/technology-guidance/generative-ai/working-with-llms/eval-metrics/)[](https://medium.com/data-science-at-microsoft/evaluating-llm-systems-metrics-challenges-and-best-practices-664ac25be7e5)[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+
+1. **BERTScore**:
+   - **Description**: Measures semantic similarity between generated and reference text using contextual embeddings from BERT. It captures meaning beyond n-gram overlap.
+   - **Use Case**: Text generation, summarization.
+   - **Limitations**: Vulnerable to contextual biases in pre-trained embeddings.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+   - **Example**: Compares a generated summary to a reference summary for semantic equivalence, even if wording differs.
+
+2. **MoverScore**:
+   - **Description**: Similar to BERTScore, it uses contextual embeddings to evaluate text similarity but focuses on word mover’s distance.
+   - **Use Case**: Summarization, translation.
+   - **Limitations**: Like BERTScore, it may be biased by the underlying model’s training data.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+
+3. **QAG (Question Answer Generation) Score**:
+   - **Description**: Uses an LLM to extract claims from the output and verify them against ground truth via yes/no questions, calculating the proportion of accurate claims.
+   - **Use Case**: Faithfulness evaluation in RAG or question-answering.
+   - **Strengths**: Reliable as it avoids direct LLM scoring, leveraging reasoning instead.
+   - **Example**: For a factual claim in an LLM response, the metric asks, “Is this claim true?” and checks against ground truth.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+
+4. **TruthfulQA**:
+   - **Description**: Evaluates the model’s ability to avoid generating false or misleading responses, using zero-shot generative tasks.
+   - **Use Case**: Assessing truthfulness in question-answering or content generation.
+   - **Example**: Tests whether an LLM avoids common human-like falsehoods (e.g., myths or misconceptions).[](https://aisera.com/blog/llm-evaluation/)
+
+---
+
+### **3. Evaluation Frameworks and Tools**
+The page references frameworks like RAGAS for RAG-specific evaluations and mentions Azure AI Foundry and Prompt Flow for implementing metrics.[](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/observability)[](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/evaluate-generative-ai-app)[](https://techcommunity.microsoft.com/blog/aiplatformblog/new-generative-ai-app-evaluation-and-monitoring-capabilities-in-azure-ai-studio/4146882)
+
+- **RAGAS**: Focuses on RAG pipelines, providing metrics like faithfulness, contextual recall, and relevance. It requires retrieved context to assess generation quality.
+- **Azure AI Foundry**: Offers a UI-based platform for running evaluations with built-in metrics (e.g., groundedness, relevance) and supports custom evaluators. It includes tools for generating synthetic test data and adversarial queries.
+- **Prompt Flow**: Enables evaluation of complex LLM workflows with pre-built metrics (e.g., classification metrics) and custom evaluation flows for tasks like JSON summarization.
+
+---
+
+### **4. Best Practices for LLM Evaluation**
+The page and related sources emphasize best practices for effective evaluation:[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/list-of-eval-metrics)[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/getting-started/llmops-checklist)[](https://arize.com/llm-evaluation)
+
+- **Select Task-Specific Metrics**: Choose metrics that align with the application’s goals (e.g., BLEU for translation, G-Eval for summarization).
+- **Use High-Quality Test Data**: Curate diverse, representative datasets, potentially using synthetic data generation for edge cases.[](https://arize.com/llm-evaluation)
+- **Combine Metrics**: Use multiple metrics (e.g., faithfulness and relevance for RAG) to capture different aspects of performance.
+- **Leverage LLM-as-a-Judge**: For subjective tasks, use frameworks like G-Eval to approximate human judgment.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/g-eval-metric-for-summarization)
+- **Iterative Testing**: Evaluate during development and monitor in production to catch performance degradation or hallucinations.[](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/observability)
+- **Consider Business KPIs**: Align metrics with business objectives, such as user satisfaction or task completion rates.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/getting-started/llmops-checklist)
+
+---
+
+### **5. Limitations and Challenges**
+- **Subjectivity**: Metrics like G-Eval rely on LLM judges, which may introduce bias or inconsistency if the judge model is suboptimal.[](https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation)
+- **Reference Dependence**: BLEU, ROUGE, and similar metrics require high-quality ground truth, which may be unavailable or subjective for tasks like summarization.
+- **Coverage**: Metrics may not capture all aspects of performance, such as tone or creativity, requiring custom metrics or human evaluation.
+- **Computational Cost**: LLM-as-a-judge approaches (e.g., G-Eval) can be resource-intensive, especially for large datasets.[](https://learn.microsoft.com/en-us/ai/playbook/technology-guidance/generative-ai/working-with-llms/evaluation/g-eval-metric-for-summarization)
+

@@ -6,4 +6,6 @@ langchain_google_genai
 python-dotenv
 google-generativeai
 faiss-cpu
+deepeval
+guardrails-ai
 
