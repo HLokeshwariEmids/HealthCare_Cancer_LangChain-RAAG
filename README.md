@@ -59,4 +59,5 @@ These roles personalize the prompt and tone of the LLM:
 ---
 Workflow Flowchart:
 
-![Mermaid Chart - Create complex, visual diagrams with text  A smarter way of creating diagrams -2025-07-09-093204](https://github.com/user-attachments/assets/0c889e8d-ba04-45ee-b339-ef7879fa482a)
+![Uploading Untitled diagram _ Mermaid Chart-2025-07-16-094256.png…]()
+
