@@ -1,6 +1,8 @@
  🧠 Cancer Report Q&A Assistant (Gemini + LangChain + RAG + Guardrails)
  
-This is a Role-Aware Retrieval-Augmented Generation (RAG) Q&A assistant that allows doctors, analysts, patients, and researchers to interact intelligently with the 2025 Cancer Facts & Figures PDF. Powered by Google Gemini 1.5 Flash, LangChain, and Streamlit, it generates role-specific answers, enforces safety via Guardrails (Pydantic), and evaluates the LLM’s performance using structured metrics.
+This is a Role-Aware Retrieval-Augmented Generation (RAG) Q&A assistant that allows doctors, analysts, patients, and researchers to interact intelligently with the 2025 Cancer Facts & Figures PDF. 
+
+Powered by Google Gemini 1.5 Flash, LangChain, and Streamlit, it generates role-specific answers, enforces safety via Guardrails (Pydantic), and evaluates the LLM’s performance using structured metrics.
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -28,11 +30,17 @@ This is a Role-Aware Retrieval-Augmented Generation (RAG) Q&A assistant that all
  🧩 Supported Roles (Customizable)
 
 🩺 Medical Specialist (Doctor)
+
 🧑‍⚕️ Health-Conscious Patient
+
 🧬 Public Health Analyst
+
 🧑‍🔬 Medical Research Intern
+
 👩‍⚕️ Nurse
+
 🧑‍💻 Healthcare Receptionist
+
 ➕ Add your own! via runtime interface
 
 ---
