@@ -93,6 +93,7 @@ Feedback and moderation logs are stored in CSVs
 ---
 Workflow Flowchart:
 
-<img width="1104" height="3840" alt="Untitled diagram _ Mermaid Chart-2025-07-16-094256" src="https://github.com/user-attachments/assets/a73d476a-64ad-41d7-b182-d95ee107119f" />
+<img width="1730" height="3840" alt="Untitled diagram _ Mermaid Chart-2025-07-16-100158" src="https://github.com/user-attachments/assets/9079ba91-f9eb-4b7d-9201-09990a7c152a" />
+
 
 
