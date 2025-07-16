@@ -56,7 +56,6 @@ Powered by Google Gemini 1.5 Flash, LangChain, and Streamlit, it generates role-
 | **pdfplumber**            | PDF parsing and chunk extraction        |
 | **Streamlit**             | Clean, interactive user interface       |
 | **Python 3.10+**          | Backend logic                           |
-*
 
 ---
 
